@@ -7,9 +7,11 @@
 #define GPIOPINGREEN 26
 #define GPIOPINBLUE 27
 #define BUZZER_PIN 33
+#define btnPin 2
 
 void controlLEDRGB(int r, int g, int b);
 void buzzerSound();
+void btnSetup(int ptm);
 
 int PWM_FREQUENCY = 5000;
 int PWM_CHANNEL0 = 0;
@@ -19,7 +21,18 @@ int PWM_CHANNEL3 = 3;
 int PWM_RESOUTION = 8;
 
 bool enableHeater = false;
+bool storeMin = true;
 uint8_t loopCnt = 0;
+
+int minValue;
+int maxValue;
+int btnState = HIGH;
+int lastbtnState = HIGH;
+
+unsigned long lastDebounceTime = 0;
+unsigned long debouncDelay = 50;
+
+bool storeMin = true;
 Adafruit_SHT31 sht31 = Adafruit_SHT31();
 
 void setup() {
@@ -52,24 +65,34 @@ void setup() {
 }
 
 void loop() {
+  int valueMap = map(analogRead(VM), 0, 4095, 0, 100);
+  btnSetup(valueMap);
+  
   float t = sht31.readTemperature();
   if (isnan(t)) {
     Serial.println("Failed to read temperature");
     return;
   }
-  int valueMap = map(analogRead(VM), 0, 4095, 0, 100);
-  if (t >= valueMap + 3) {
-    Serial.println("Temp *C = " + String(t) + " VM: " + String(valueMap) + " สีแดงอ่อน");
+  
+    Serial.println("valueMap: " + String(valueMap) +  " ValueMin: " + String(minValue) + " ValueMax: " + String(maxValue));
+  if (t >= maxValue + 3) {
+    Serial.println("Temp *C = " + String(t) + " สีแดงอ่อน");
     controlLEDRGB(255, 42, 68);
-    buzzerSound();
     delay(1000);
-  } else if (t <= valueMap - 3) {
-    Serial.println("Temp *C = " + String(t) + " VM: " + String(valueMap) + " สีฟ้าอ่อน");
+  } else if (t <= minValue - 3) {
+    Serial.println("Temp *C = " + String(t) + " สีฟ้าอ่อน");
     controlLEDRGB(54, 194, 255);
     delay(1000);
   } else {
     controlLEDRGB(255, 127, 0);
-    Serial.println("Temp *C = " + String(t) + " VM: " + String(valueMap) + " สีสม");
+    Serial.println("Temp *C = " + String(t) + " สีสม");
+    delay(1000);
+  }
+
+  if(t > 39){
+    buzzerSound();
+    controlLEDRGB(255, 0, 0);
+    Serial.println("Temp *C = " + String(t) + " hot!!!!");
     delay(1000);
   }
 
@@ -100,4 +123,27 @@ void buzzerSound(){
     ledcWriteTone(PWM_CHANNEL3, 0); // Turn off the tone
     delay(500);
   }
+}
+
+void btnSetup(int ptm){
+  int reading = digitalRead(btnPin);
+  if (reading != lastbtnState) 
+    lastDebounceTime = millis();
+
+
+  if ((millis() - lastDebounceTime) > debouncDelay) {
+    if (reading != btnState) {
+      btnState = reading;
+      if (btnState == LOW) {
+        if (storeMin)
+          minValue = ptm;
+        else
+          maxValue = ptm;
+
+        storeMin = !storeMin;
+      }
+    }
+  }
+
+  lastbtnState = reading;
 }
